@@ -138,8 +138,16 @@ class parse_at(object):
                 if chcl[0] == u'at_price':
                     # Don't forget to keep decimal places (people do charge
                     # fractional dollars sometimes).
+                    #
+                    # Also, sometimes people show multiple prices, with one of
+                    # them in strikethrough, to show that the price has been
+                    # lowered. Seems to be that the new price is the _last_ of
+                    # the prices (e.g., if it's been lowered from $28,900 to
+                    # $26,900, then the stripped strings are "$28,900" followed
+                    # by a bunch of whitespace, followed by "$26,900". So, take
+                    # the last of the prices (the split()[-1] does this).
                     price = int(re.sub(r'[^0-9.]', '',
-                        ''.join(child.strings).strip()))
+                        ''.join(child.strings).strip().split()[-1]))
                 if chcl[0] == u'at_km':
                     km = int(re.sub(r'[^0-9]', '', child.string.strip()))
                 # There are two ResultDistance classes: one just has the city

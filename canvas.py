@@ -42,9 +42,11 @@ class at_graph(Frame):
         self.style.theme_use("classic")
         # Assume the parent is the root widget; make the frame take up the
         # entire widget size.
+        print self.is_standalone
         if self.is_standalone:
             self.w, self.h = map(int,
                 self.parent.geometry().split('+')[0].split('x'))
+            self.w, self.h = 800, 800
         else:
             self.w, self.h = 600, 600
         self.c = None
@@ -55,15 +57,31 @@ class at_graph(Frame):
         self.filter = ''
         self.replot()
 
-    def replot(self):
+    def replot(self, zlfrac=None):
+        """Replot the graph. If zlfrac is not None, then it should be a
+        fractional value between 0 and 1; this is used to do smooth zooming,
+        which doesn't plot the axes (it only redraws the car points)."""
         if self.c is not None:
             self.c.destroy()
         self.c = Canvas(self, height=self.h, width=self.w, bd=1, bg='#f3f5f9')
         self.c.grid(sticky=S, pady=1, padx=1)
         zl = self.zoom_level
-        self.axis(self.price[zl], 'y')
-        self.axis(self.km[zl], 'x')
-        self.car_points()
+        if zlfrac is not None:
+            z1l, z1h = self.zoom_price_start
+            z2l, z2h = self.zoom_price_end
+            price_low = z1l + (z2l - z1l) * zlfrac
+            price_high = z1h + (z2h - z1h) * zlfrac
+            z1l, z1h = self.zoom_km_start
+            z2l, z2h = self.zoom_km_end
+            km_low = z1l + (z2l - z1l) * zlfrac
+            km_high = z1h + (z2h - z1h) * zlfrac
+            self.axis((price_low, price_high), 'y', draw=False)
+            self.axis((km_low, km_high), 'x', draw=False)
+            self.car_points(draw=False)
+        else:
+            self.axis(self.price[zl], 'y')
+            self.axis(self.km[zl], 'x')
+            self.car_points()
         self.pack(fill=BOTH, expand=1)
 
     def xyp(self, x, y):
@@ -74,9 +92,13 @@ class at_graph(Frame):
             * (self.yp2 - self.yp1) + self.yp1 + 0.5))
         return (xp, yp)
 
-    def axis(self, arange, ax):
+    def axis(self, arange, ax, draw=True):
         "Add an axis ax='x' or 'y', with arange=(min, max) values."
-        a1, a2, ast = self.u.axis(*arange)
+        if draw:
+            a1, a2, ast = self.u.axis(*arange)
+        else:
+            a1, a2 = arange
+            ast = (a2 - a1) * 0.2
         nt = int(math.floor((a2 - a1) / ast + 0.5)) + 1
         st_offset = 50
         # Remember the min and max axis values, along with the canvas points
@@ -105,18 +127,15 @@ class at_graph(Frame):
                 else x + '0'*(max_dec - len(x.split('.')[1])), atick)
         yst, xst = self.h - st_offset, st_offset
         # Draw axis line proper, and axis label.
-        if ax == 'x':
-            self.c.create_line(xst, yst, self.w - st_offset, yst)
-            #self.c.create_text(self.w - st_offset + 50, yst - 20,
-            #    text='Mileage')
-            #self.c.create_text(self.w - st_offset + 50, yst - 5,
-            #    text='(km x 1000)')
-            xp = (xst + self.w - st_offset) / 2
-            self.c.create_text(xp, yst + 30, text='Mileage (km x 1000)')
-        else:
-            self.c.create_line(xst, yst, xst, st_offset)
-            self.c.create_text(xst, st_offset - 30, text='Price')
-            self.c.create_text(xst, st_offset - 15, text='($000)')
+        if draw:
+            if ax == 'x':
+                self.c.create_line(xst, yst, self.w - st_offset, yst)
+                xp = (xst + self.w - st_offset) / 2
+                self.c.create_text(xp, yst + 30, text='Mileage (km x 1000)')
+            else:
+                self.c.create_line(xst, yst, xst, st_offset)
+                self.c.create_text(xst, st_offset - 30, text='Price')
+                self.c.create_text(xst, st_offset - 15, text='($000)')
         tick_anchor = [N, E][ax == 'y']
         tick_x, tick_y = xst, yst
         tick_step = ([self.w, self.h][ax == 'y'] - st_offset * 2 * 1.0) / \
@@ -128,8 +147,9 @@ class at_graph(Frame):
                 y_of = int(-i1 * tick_step)
             else:
                 x_of = int(i1 * tick_step)
-            self.c.create_text(tick_x + x_of, tick_y + y_of,
-                text=tick, anchor=tick_anchor)
+            if draw:
+                self.c.create_text(tick_x + x_of, tick_y + y_of,
+                    text=tick, anchor=tick_anchor)
             x_mini, y_mini = 0, 0
             x_maxi, y_maxi = 0, 0
             if ax == 'y':
@@ -146,15 +166,16 @@ class at_graph(Frame):
                 if i1 == 0:
                     self.x_grid = []
                 self.x_grid.append(tick_x + x_of)
-            # Draw the little solid tick, next to the axis.
-            self.c.create_line(tick_x + x_of, tick_y + y_of,
-                tick_x + x_of + x_mini, tick_y + y_of + y_mini)
-            # Draw a dashed grid line, across the entire graph.
-            self.c.create_line(tick_x + x_of, tick_y + y_of,
-                tick_x + x_of + x_maxi, tick_y + y_of + y_maxi,
-                dash=(1, 3))
+            if draw:
+                # Draw the little solid tick, next to the axis.
+                self.c.create_line(tick_x + x_of, tick_y + y_of,
+                    tick_x + x_of + x_mini, tick_y + y_of + y_mini)
+                # Draw a dashed grid line, across the entire graph.
+                self.c.create_line(tick_x + x_of, tick_y + y_of,
+                    tick_x + x_of + x_maxi, tick_y + y_of + y_maxi,
+                    dash=(1, 3))
 
-    def car_points(self):
+    def car_points(self, draw=True):
         "Plot the cars themselves."
         color_order = ['#98df8a', '#dbdb8d', '#aec7e8', '#c9acd4', '#f7b6d2',
             '#ffbb80', '#dc9b8d', '#e9ab17', '#dddddd']
@@ -169,8 +190,14 @@ class at_graph(Frame):
         i1 = -1
         # Tuples of (index into self.u.all_* arrays, x position, y position).
         self.ov_dict = dict()
-        self.c.bind('<Button-1>', func=self.zoom)
-        self.c.bind('<Button-2>', func=self.unzoom)
+        if draw:
+            self.c.focus_set()
+            self.c.bind('<Button-1>', func=self.zoom)
+            self.c.bind('<Button-2>', func=self.unzoom)
+            self.c.bind('<Left>', func=self.left_key)
+            self.c.bind('<Right>', func=self.right_key)
+            self.c.bind('<Up>', func=self.up_key)
+            self.c.bind('<Down>', func=self.down_key)
         legend = set()
         osz = 3 + self.zoom_level * 1
         # Total vehicle count, and vehicles which pass the filter count.
@@ -205,38 +232,40 @@ class at_graph(Frame):
                 self.c.lower(ov)
             else:
                 self.fcount += 1
-                use_tag = 'Tag %d' % i1
-                self.c.addtag_withtag(use_tag, ov)
-                self.c.tag_bind(use_tag, sequence='<Enter>',
-                    func=self.mouseover)
-                self.c.tag_bind(use_tag, sequence='<Leave>',
-                    func=self.mouseoff)
-                self.c.tag_bind(use_tag, sequence='<Button-1>',
-                    func=self.select)
-        # OK, add a legend for every year that's displayed.
-        i1 = 0
-        for yr, color in reversed(sorted(legend)):
-            xp, yp = self.x_grid[-1] + 10, self.y_grid[-1] + 15 * i1
-            self.c.create_oval(xp-osz, yp-osz, xp+osz, yp+osz,
-                outline=color, fill=color)
-            self.c.create_text(xp + 8, yp, text=str(yr), anchor=W)
-            i1 += 1
-        # And, add a title.
-        tistr = 'Vehicle count: %d' % self.vcount
-        if self.fcount != self.vcount:
-            tistr = 'Filtered vehicle count: %d' % self.fcount
-        xp = (self.x_grid[0] + self.x_grid[-1]) / 2
-        yp = self.y_grid[-1] - 30
-        self.c.create_text(xp, yp, text=tistr, font=('Helvetica', '16'))
-        zstr1 = 'Click on a blank graph location to zoom in'
-        zstr2 = 'Right click to zoom out'
-        if self.zoom_level == 0:
-            zstr = zstr1
-        elif self.zoom_level == 2:
-            zstr = zstr2
-        else:
-            zstr = zstr1 + ', or r' + zstr2[1:]
-        self.c.create_text(xp, yp + 16, text=zstr, font=('Helvetica', '14'))
+                if draw:
+                    use_tag = 'Tag %d' % i1
+                    self.c.addtag_withtag(use_tag, ov)
+                    self.c.tag_bind(use_tag, sequence='<Enter>',
+                        func=self.mouseover)
+                    self.c.tag_bind(use_tag, sequence='<Leave>',
+                        func=self.mouseoff)
+                    self.c.tag_bind(use_tag, sequence='<Button-1>',
+                        func=self.select)
+        if draw:
+            # OK, add a legend for every year that's displayed.
+            i1 = 0
+            for yr, color in reversed(sorted(legend)):
+                xp, yp = self.x_grid[-1] + 10, self.y_grid[-1] + 15 * i1
+                self.c.create_oval(xp-osz, yp-osz, xp+osz, yp+osz,
+                    outline=color, fill=color)
+                self.c.create_text(xp + 8, yp, text=str(yr), anchor=W)
+                i1 += 1
+            # And, add a title.
+            tistr = 'Vehicle count: %d' % self.vcount
+            if self.fcount != self.vcount:
+                tistr = 'Filtered vehicle count: %d' % self.fcount
+            xp = (self.x_grid[0] + self.x_grid[-1]) / 2
+            yp = self.y_grid[-1] - 30
+            self.c.create_text(xp, yp, text=tistr, font=('Helvetica', '16'))
+            zstr1 = 'Click on a blank graph location to zoom in'
+            zstr2 = 'Right click to zoom out'
+            if self.zoom_level == 0:
+                zstr = zstr1
+            elif self.zoom_level == 2:
+                zstr = zstr2
+            else:
+                zstr = zstr1 + ', or r' + zstr2[1:]
+            self.c.create_text(xp, yp + 16, text=zstr, font=('Helvetica', '14'))
 
     def mouseover(self, event):
         oval = event.widget.find_closest(event.x, event.y)[0]
@@ -294,6 +323,14 @@ class at_graph(Frame):
         # Button-1 events will cause a zoom, rather than launching a web page.
         self.is_hovering = False
 
+    def _zoom_animation(self):
+        import time
+        from math import tanh
+        scale = 5
+        for i1 in range(-scale, scale+1):
+            self.replot(zlfrac=0.5 + 0.5*tanh(i1*2.0/scale)/tanh(2.0))
+            self.c.update()
+
     def zoom(self, event):
         # Only zoom in if we're actually within the graph boundaries.
         if event.x <= self.x_grid[0] or event.x > self.x_grid[-1]:
@@ -322,6 +359,15 @@ class at_graph(Frame):
         # was clicked inside.
         self.km[zl] = (self.xtick[xgrid-1], self.xtick[xgrid])
         self.price[zl] = (self.ytick[ygrid-1], self.ytick[ygrid])
+        if zl == 1:
+            self.zoom_price_start = self.u.axis(*self.price[0])[:2]
+            self.zoom_km_start = self.u.axis(*self.km[0])[:2]
+        else:
+            self.zoom_price_start = self.price[zl - 1]
+            self.zoom_km_start = self.km[zl - 1]
+        self.zoom_price_end = self.price[zl]
+        self.zoom_km_end = self.km[zl]
+        self._zoom_animation()
         self.replot()
 
     def unzoom(self, event):
@@ -334,7 +380,78 @@ class at_graph(Frame):
         if event.y >= self.y_grid[0] or event.y < self.y_grid[-1]:
             return
         self.zoom_level -= 1
+        zl = self.zoom_level
+        self.zoom_price_start = self.price[zl + 1]
+        self.zoom_km_start = self.km[zl + 1]
+        if zl == 0:
+            self.zoom_price_end = self.u.axis(*self.price[0])[:2]
+            self.zoom_km_end = self.u.axis(*self.km[0])[:2]
+        else:
+            self.zoom_price_end = self.price[zl]
+            self.zoom_km_end = self.km[zl]
+        self._zoom_animation()
         self.replot()
+
+    def left_key(self, event):
+        zl = self.zoom_level
+        if zl == 0:
+            return
+        # If at left edge already, don't scroll.
+        kz = self.km[zl]
+        if self.km[0][0] > kz[0]:
+            return
+        self.zoom_price_start = self.zoom_price_end = self.price[zl]
+        self.zoom_km_start = kz
+        self.km[zl] = (kz[0] - (kz[1] - kz[0]), kz[0])
+        self.zoom_km_end = self.km[zl]
+        self._zoom_animation()
+        self.replot()
+
+    def right_key(self, event):
+        zl = self.zoom_level
+        if zl == 0:
+            return
+        # If at right edge already, don't scroll.
+        kz = self.km[zl]
+        if self.km[0][1] < kz[1]:
+            return
+        self.zoom_price_start = self.zoom_price_end = self.price[zl]
+        self.zoom_km_start = kz
+        self.km[zl] = (kz[1], kz[1] + (kz[1] - kz[0]))
+        self.zoom_km_end = self.km[zl]
+        self._zoom_animation()
+        self.replot()
+
+    def down_key(self, event):
+        zl = self.zoom_level
+        if zl == 0:
+            return
+        # If at bottom edge already, don't scroll.
+        pz = self.price[zl]
+        if self.price[0][0] > pz[0]:
+            return
+        self.zoom_km_start = self.zoom_km_end = self.km[zl]
+        self.zoom_price_start = pz
+        self.price[zl] = (pz[0] - (pz[1] - pz[0]), pz[0])
+        self.zoom_price_end = self.price[zl]
+        self._zoom_animation()
+        self.replot()
+
+    def up_key(self, event):
+        zl = self.zoom_level
+        if zl == 0:
+            return
+        # If at top edge already, don't scroll.
+        pz = self.price[zl]
+        if self.price[0][1] < pz[1]:
+            return
+        self.zoom_km_start = self.zoom_km_end = self.km[zl]
+        self.zoom_price_start = pz
+        self.price[zl] = (pz[1], pz[1] + (pz[1] - pz[0]))
+        self.zoom_price_end = self.price[zl]
+        self._zoom_animation()
+        self.replot()
+
 
     def select(self, event):
         "Open a web page, when a data point has been clicked on."
@@ -347,7 +464,7 @@ class at_graph(Frame):
         webbrowser.open(self.u.all_alink[ind])
 
 # For running from the command line, change "False" to "True" below.
-if False:
+if True:
     self = None
     root = None
 
