@@ -1,7 +1,10 @@
 from Tkinter import *
 from Tkinter import _setit
 from myat.ht_connect import ht_connect
+from myat.parse_at import parse_at
+from myat.canvas import at_graph
 import re
+from time import sleep
 from collections import defaultdict
 
 def create_reset_widget(parent, txtstr, command):
@@ -16,6 +19,7 @@ def create_reset_widget(parent, txtstr, command):
     fixloc.grid(row=0, column=0, sticky='nsew')
     locreset = Button(fixed_frame, text='Reset', command=command)
     locreset.grid(row=0, column=1, sticky='nsew')
+    fixed_frame.columnconfigure(0, {'weight': 1})
     return fixed_frame
 
 class location(Frame):
@@ -158,11 +162,13 @@ class location(Frame):
         self.e1.destroy()
         self.locframe = create_reset_widget(self, locstr, self.reset_location)
         self.locframe.grid(row=2, column=0, sticky='nsew')
-        self.refine.new_location(self.js)
+        self.refine.enable_all_widgets()
+        self.refine.update_search_widgets()
 
     def reset_location(self):
         if self.locframe:
             self.locframe.destroy()
+            self.locframe = None
         self.e1 = Entry(self, width=20)
         self.e1.grid(row=2, column=0, sticky='nwes')
         # When a key is pressed, search, after a delay.
@@ -181,6 +187,9 @@ class location(Frame):
 # - All widgets which occur on the same row are placed inside a subframe.
 # - 'dtext' is the default text to display (i.e., when they've not selected a
 #   particular value).
+# - 'rkey' is the JSON key (in the returned refinement dictionary) with the
+#   list of valid strings and values (e.g., "Volkswagen (2234)"). This is used
+#   in OptionMenus to provide the list of valid refinements.
 #
 # In addition to all these static entries, there's a dynamic entry called
 # 'state'.
@@ -193,7 +202,7 @@ class location(Frame):
 #     text of their selection (and that Entry is in Tk state 'disabled'), as
 #     well as a Tk Button widget that clears that particular setting (so, e.g.,
 #     if they decide they no longer want to search for Volkswagen only).  In
-#     that case, the 'state' dictionary entry is 'specific'.
+#     that case, the 'state' dictionary entry is 'fixed'.
 #   - When a specific value has _not_ been chosen, the 'state' dictionary entry
 #     is 'any'.
 SEARCH_MAP = {
@@ -202,12 +211,14 @@ SEARCH_MAP = {
         'row': 0,
         'column': 0,
         'dtext': 'Make (any)',
+        'rkey': 'Makes',
     },
     'Model': {
         'wtype': 'OptionMenu',
         'row': 1,
         'column': 0,
         'dtext': 'Model (any)',
+        'rkey': 'Models',
     },
     'MinPrice': {
         'wtype': 'Entry',
@@ -238,6 +249,7 @@ SEARCH_MAP = {
         'row': 4,
         'column': 0,
         'dtext': 'Body Type (any)',
+        'rkey': 'BodyStyles',
     },
     'MinYear': {
         'wtype': 'OptionMenu',
@@ -245,6 +257,7 @@ SEARCH_MAP = {
         'row': 5,
         'column': 0,
         'dtext': 'Min. Year',
+        'rkey': 'FromYears',
     },
     'MaxYear': {
         'wtype': 'OptionMenu',
@@ -252,76 +265,98 @@ SEARCH_MAP = {
         'row': 5,
         'column': 1,
         'dtext': 'Max. Year',
+        'rkey': 'ToYears',
     },
     'Transmission': {
         'wtype': 'OptionMenu',
         'row': 6,
         'column': 0,
         'dtext': 'Transmission (any)',
+        'rkey': 'Transmissions',
     },
     'FuelType': {
         'wtype': 'OptionMenu',
         'row': 7,
         'column': 0,
         'dtext': 'Fuel Type (any)',
+        'rkey': 'FuelTypes',
     },
     'Colour': {
         'wtype': 'OptionMenu',
         'row': 8,
         'column': 0,
         'dtext': 'Colour (any)',
+        'rkey': 'Colours',
     },
 }
 
 class refine(Frame):
-    def __init__(self, parent, hc):
+    def __init__(self, parent, hc, ca):
         Frame.__init__(self, parent)
         self.parent = parent
         self.hc = hc
+        self.ca = ca
+        self.canvas = None
         # Need to make variable names unique the search form, in order to be
         # able to search on them repeatedly after modifying them.
         self.svi = 0
         self.js = defaultdict(lambda: list())
+        # The following dictionaries are all indexed by the keys from
+        # SEARCH_MAP.
+        #
+        # Storage for labels for each search widget, if any.
         self.l = dict()
+        # Storage for OptionMenu variables for each search widget, if any.
         self.v = dict()
+        # Storage for the result of calling "trace" on an OptionMenu variable.
+        self.tv = dict()
+        # Storage for search widgets themselves.
         self.w = dict()
+        # When a widget is set to a specific value, store the frame containing
+        # the specific value and the Reset button.
+        self.r = dict()
         self.build_search_frame(None)
         self.disable_all_widgets()
 
     def disable_all_widgets(self):
         for k in self.w:
             self.w[k].configure({'state': 'disabled'})
+        for k in self.l:
+            self.l[k].configure({'state': 'disabled'})
 
     def enable_all_widgets(self):
         for k in self.w:
             self.w[k].configure({'state': 'normal'})
+        for k in self.l:
+            self.l[k].configure({'state': 'normal'})
 
     def _uname(self, st):
         "Seem to need this to make traces on StringVars work right."
         self.svi += 1
         return '%s_%d' % (st, self.svi)
 
-    def vehicle_count(self, vc):
-        "Display the vehicle count."
-        pass
+    def refinements_by_key(self, rkey):
+        if self.hc.refine_dict[rkey] is None:
+            return list()
+        return map(lambda ent: ent['Display'], self.hc.refine_dict[rkey])
 
     def redraw_widget(self, k):
         "For key 'k' from SEARCH_MAP, update or draw the widget."
         d = SEARCH_MAP[k]
         f = self.sf_dict[k]
-        # Is the widget drawn yet?
-        if 'drawn_state' not in d:
+
+        def searchable_widget():
             cnum = 0
             if 'label' in d:
                 self.l[k] = Label(f, text=d['label'], width=7, anchor=W)
-                self.l[k].configure({'state': 'disabled'})
                 self.l[k].grid(row=0, column=0, sticky='ew')
                 f.columnconfigure(cnum, {'weight': 1})
                 cnum = 1
             if d['wtype'] == 'OptionMenu':
+                if k in self.v:
+                    del(self.v[k])
                 self.v[k] = StringVar(f, name=self._uname(k))
                 self.v[k].set(d['dtext'])
-                self.v[k].trace('w', self.search_modified)
                 self.w[k] = OptionMenu(f, self.v[k], self.v[k])
             elif d['wtype'] == 'Entry':
                 self.w[k] = Entry(f, width=8)
@@ -329,52 +364,93 @@ class refine(Frame):
             else:
                 raise Exception('Unknown widget type "%s"' % d['wtype'])
             self.w[k].grid(row=0, column=cnum, sticky='ew')
+            # Need the line below for widget to span entire width of column.
             f.columnconfigure(cnum, {'weight': 1})
+
+        def add_search_options():
+            legal = [d['dtext']] + self.refinements_by_key(d['rkey'])
+            # Specifically for the Model, if there are no legal refinements,
+            # then the Make has not been set. Indicate this to the user.
+            if k == 'Model' and len(legal) == 1:
+                legal = ['Model (choose a make first)']
+            self.w[k]['menu'].delete(0, 'end')
+            if k in self.tv:
+                self.v[k].trace_vdelete('w', self.tv[k])
+                del(self.tv[k])
+            self.v[k].set(legal[0])
+            for choice in legal:
+                self.w[k]['menu'].add_command(label=choice,
+                    command=_setit(self.v[k], choice))
+            if len(legal) > 1:
+                if k in self.tv:
+                    self.v[k].trace_vdelete('w', self.tv[k])
+                    del(self.tv[k])
+                self.tv[k] = self.v[k].trace('w', self.search_modified)
+
+        # Is the widget drawn yet?
+        if 'drawn_state' not in d:
+            # Nope: we're in the search form constructor. Set this search term
+            # to be in the 'any' (i.e., non-specific) state, and draw the
+            # widget.
+            d['drawn_state'] = 'any'
+            searchable_widget()
             return
-        # Yes, it's drawn. If its state hasn't changed, do nothing.
+        # Yes, it's drawn. Is its current state the same as its drawn state?
         if d['state'] == d['drawn_state']:
+            # Yes; if it's an OptionMenu, and if it's in state 'any', then the
+            # list of choices in the widget might be different (e.g., if we
+            # change any other search field, then the available "Makes"
+            # change). Create the new choices in the widget.
+            if not (d['state'] == 'any' and d['wtype'] == 'OptionMenu'):
+                return
+            add_search_options()
             return
         # Otherwise, see what state it's transitioning from and to.
-        pass
+        if d['drawn_state'] == 'any':
+            if d['state'] == 'specific':
+                # This is going from unspecified to specified. 
+                self.w[k].destroy()
+                del(self.v[k])
+                self.r[k] = create_reset_widget(f, self.hc.so_dict[k],
+                        eval('self.reset_'+k))
+                self.r[k].grid(row=0, column=0, sticky='nsew')
+        elif d['drawn_state'] == 'specific':
+            if d['state'] == 'any':
+                # This is going from specified to unspecified. 
+                self.r[k].destroy()
+                searchable_widget()
+                add_search_options()
+        d['drawn_state'] = d['state']
 
-    def add_to_search(self, index, row, column, columnspan=1, frame=None,
-        text=None):
-        """For the given 'index' from SEARCH_MAP:
-        - If it's _not_ been specified in the search, add an OptionMenu widget
-          with all the legal choices, and add a trace when the option is
-          modified so we can refine the search.
-        - If it _has_ been specified in the search, then simply label it, but
-          add a "Reset" button.
-        """
-        if frame is None:
-            frame = self
-        if text is None:
-            text = '%s (all)' % index
-        search_value = self.hc.get_so(SEARCH_MAP[index])
-        # Have they specifically set this value?
-        if search_value is None:
-            # If (e.g.) we're adding the 'Makes" to the search, then create:
-            # - self.l['Makes'], a list of all the makes returned by the
-            #   refinement.
-            # - self.v['Makes'], a StringVar with the currently selected make.
-            # - self.w['Makes'], the OptionMenu widget with the makes listed.
-            self.l[index] = [text] + sorted(map(lambda x:
-                x['Display'], self.js[index]), key=lambda x: x.lower())
-            self.v[index] = StringVar(frame, name=self._uname(index))
-            self.v[index].set(self.l[index][0])
-            self.v[index].trace('w', self.search_modified)
-            self.w[index] = OptionMenu(frame, self.v[index], *self.l[index])
-        else:
-            # It's specifically set. Display it in a disabled Entry with a
-            # Reset button.
-            self.v[index] = None
-            self.w[index] = create_reset_widget(frame, search_value,
-                eval('self.reset_' + index.lower()))
-        self.w[index].grid(row=row, column=column, columnspan=columnspan,
-            sticky='nesw')
+    def reset_Make(self):
+        self.search_modified('Reset', 'Make')
 
-    def reset_makes(self, event):
-        pass
+    def reset_Model(self):
+        self.search_modified('Reset', 'Model')
+
+    def reset_BodyStyle(self):
+        self.search_modified('Reset', 'BodyStyle')
+
+    def reset_MinYear(self):
+        self.search_modified('Reset', 'MinYear')
+
+    def reset_MaxYear(self):
+        self.search_modified('Reset', 'MaxYear')
+
+    def reset_Transmission(self):
+        self.search_modified('Reset', 'Transmission')
+
+    def reset_FuelType(self):
+        self.search_modified('Reset', 'FuelType')
+
+    def reset_Colour(self):
+        self.search_modified('Reset', 'Colour')
+
+    def _show_info(self, tstr=None):
+        if tstr is None:
+            tstr = ''
+        self.sinfo.configure({'text': tstr})
+        self.sinfo.update()
 
     def build_search_frame(self, bsc):
         """Create the search frame, with 'bsc' (body style count) vehicles
@@ -398,7 +474,8 @@ class refine(Frame):
             font=('Helvetica 14 italic'))
         self.sinfo.grid(row=0, column=1, sticky='nwes')
         # Click this button to plot the vehicles.
-        self.w['Show'] = Button(self.info_frame, text='Show me the vehicles!')
+        self.w['Show'] = Button(self.info_frame, text='Show me the vehicles!',
+            command=self.do_plot)
         self.w['Show'].grid(row=1, column=0, columnspan=2, sticky='ns')
         # Divider line between vehicle count things and search frame.
         self.c1 = Canvas(self.info_frame, height=1, width=200, bd=1,
@@ -424,8 +501,7 @@ class refine(Frame):
             cspan = 1
             if len(self.row_dict[d['row']]) == 1:
                 cspan = max_cols
-            print "%s: row %s, col %s, cpsan %s" % (k, d['row'], d.get('column', 0), cspan)
-            d['state'] = 'disabled'
+            d['state'] = 'any'
             self.redraw_widget(k)
             self.sf_dict[k].grid(row=d['row'], column=d.get('column', 0),
                 columnspan=cspan, sticky='nsew')
@@ -433,44 +509,85 @@ class refine(Frame):
 
     def update_vehicle_count(self):
         bsc = 0
-        for bs in self.js['BodyStyles']:
+        for bs in self.hc.refine_dict['BodyStyles']:
             bsd = bs['Display']
             bsc += int(bsd.split()[-1][1:-1])
         self.vcount.configure({'text': str(bsc)})
         self.vstring.configure({'text': 'vehicles'})
         self.w['Show'].configure({'state': 'normal'})
 
-    def new_location(self, js):
+    def update_search_widgets(self):
         """After a new location is entered, build the widgets with the
-        information from the refined JSON."""
-        self.js = js
+        information from the refined JSON, which is in self.hc.refine_dict."""
         self.update_vehicle_count()
-        self.enable_all_widgets()
-        for k in self.js:
-            if k not in self.w:
-                continue
-            if self.js[k] is None:
-                continue
-            if k not in self.v or self.v[k] is None:
-                continue
-            self.l[k] = ['%s (all)' % k] + sorted(map(lambda x:
-                x['Display'], self.js[k]), key=lambda x: x.lower())
-            self.v[k].set(self.l[k][0])
-            self.w[k]['menu'].delete(0, 'end')
-            for l in self.l[k]:
-                self.w[k]['menu'].add_command(label=l,
-                    command=_setit(self.v[k], l))
-            print "-- Have", k
+        for k in SEARCH_MAP:
+            d = SEARCH_MAP[k]
+            # Is the search parameter (like "Make" or "BodyStyle") specified?
+            if self.hc.so_dict[k] is None:
+                d['state'] = 'any'
+            else:
+                d['state'] = 'specific'
+            self.redraw_widget(k)
 
     def search_modified(self, *args):
-        pass
+        print "-- Search modified", args
+        kw = dict()
+        # Did they type a new value in an Entry box?
+        if isinstance(args[0], Event):
+            pass
+        elif isinstance(args[0], str):
+            if args[0] == 'Reset':
+                kw[args[1]] = None
+            else:
+                # Cheesy, but when they choose a value from an OptionMenu, the
+                # argument from the "watch" command comes to us as the variable
+                # name, followed by underscore and a number. Extract the
+                # variable name.
+                k = args[0].split('_')[0]
+                vstr = self.v[k].get()
+                # The OptionMenu is either composed of strings and counts (like
+                # "Volkswagen (2140)"), or in the special case of FromYear and
+                # ToYear, just the straight-up year (like "2012").
+                if '(' in vstr:
+                    vstr = vstr[:vstr.rindex('(')].strip()
+                # If the OptionMenu value is merely the default text (i.e.,
+                # if for "Make", it was "Make (any)"), then don't bother
+                # searching -- this case happens upon setting the location for
+                # the first time.
+                dtext = SEARCH_MAP[k]['dtext']
+                if not dtext.startswith(vstr):
+                    kw[k] = vstr
+        if len(kw) == 0:
+            return
+        self._show_info('Searching...')
+        self.hc.refine(**kw)
+        if self.hc.refine_dict['ErrorCode'] == 0:
+            self._show_info()
+            self.update_search_widgets()
+        else:
+            self._show_info('Search error!')
+
+    def do_plot(self):
+        self.parse_at = parse_at()
+        html = self.hc.get_vehicles()
+        fh = open(self.parse_at.content_file, 'w')
+        print >>fh, html
+        fh.close()
+        self.parse_at.execute()
+        if self.canvas:
+            self.canvas.destroy()
+        self.canvas = at_graph(self.ca)
 
 root = Tk()
 
 hc = ht_connect()
-ref = refine(root, hc)
+ca = Frame(root)
+ca.grid(row=0, rowspan=2, column=1, sticky='nsew')
+ref = refine(root, hc, ca)
 ref.grid(row=1, column=0, sticky='new')
 lo = location(root, hc, ref)
 lo.grid(row=0, column=0, sticky=(N, W))
+
 root.columnconfigure(0, {'weight': 1})
+root.columnconfigure(1, {'weight': 3})
 root.rowconfigure(0, {'weight': 1})

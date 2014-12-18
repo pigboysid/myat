@@ -210,8 +210,10 @@ class ht_connect(object):
         self._parse_response(r)
         self._parse_json_body(r)
         if self.js_response is None:
-            return []
-        return self.js_response['d']
+            self.refine_dict = dict()
+        else:
+            self.refine_dict = self.js_response['d'].copy()
+        return self.refine_dict
 
     def get_vehicles(self):
         rpage = '/cars/volkswagen/on/waterloo/?prx=100&prv=Ontario&loc=waterloo%2c+on&sts=New-Used&hprc=True&wcp=True'
