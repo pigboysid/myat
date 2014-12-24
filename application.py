@@ -3,6 +3,7 @@ from Tkinter import _setit
 from myat.ht_connect import ht_connect
 from myat.parse_at import parse_at
 from myat.canvas import at_graph
+from myat.utils import commafy
 import re
 from time import sleep
 from collections import defaultdict
@@ -32,16 +33,16 @@ class location(Frame):
         # Title and info boxes are in row 0.
         self.ltitle = Label(self, text='Enter a location', fg='forestgreen',
             anchor=NW, font=('Helvetica', 20))
-        self.ltitle.grid(row=0, column=0, sticky='nwes')
+        self.ltitle.grid(row=0, column=0, sticky='nsew')
         self.linfo = Label(self, text='', fg='darkred', anchor=NE,
             font=('Helvetica 14 italic'))
-        self.linfo.grid(row=0, column=1, sticky='nwes')
+        self.linfo.grid(row=0, column=1, sticky='nsew')
         # Explanatory labels for search boxes are in row 1.
         self.l1 = Label(self, text='City/province or postal code\n(e.g., "Toronto, ON" or "M5W 1E6")',
             wraplength=220, anchor=W, justify=LEFT)
         self.l2 = Label(self, text='Search within', anchor=SE)
-        self.l1.grid(row=1, column=0, sticky='nwes')
-        self.l2.grid(row=1, column=1, sticky='nwes')
+        self.l1.grid(row=1, column=0, sticky='nsew')
+        self.l2.grid(row=1, column=1, sticky='nsew')
         # Location entry box and search radius drop-down are in row 2.
         self.locframe = None
         self.sugg = None
@@ -51,13 +52,13 @@ class location(Frame):
         self.all_oloc = ['25 km', '50 km', '100 km', '250 km', '500 km',
             '1000 km', 'Provincial', 'Nationwide']
         self.o1 = OptionMenu(self, self.oloc, *self.all_oloc)
-        self.o1.grid(row=2, column=1, sticky='nwes')
+        self.o1.grid(row=2, column=1, sticky='nsew')
         self.c1 = Canvas(self, height=1, width=200, bd=1,
             bg='#777777')
         # If they type a partial location, then we'll put a drop-down
         # suggestion menu in row 3.
         # Divider for location area is in row 4.
-        self.c1.grid(row=4, column=0, columnspan=2, sticky='nwes')
+        self.c1.grid(row=4, column=0, columnspan=2, sticky='nsew')
         self.columnconfigure(0, minsize=220)
 
     def cleanup(self, x):
@@ -170,7 +171,7 @@ class location(Frame):
             self.locframe.destroy()
             self.locframe = None
         self.e1 = Entry(self, width=20)
-        self.e1.grid(row=2, column=0, sticky='nwes')
+        self.e1.grid(row=2, column=0, sticky='nsew')
         # When a key is pressed, search, after a delay.
         self.do_search_id = None
         self.e1.bind('<Key>', self.keypress)
@@ -410,8 +411,18 @@ class refine(Frame):
             if d['state'] == 'specific':
                 # This is going from unspecified to specified. 
                 self.w[k].destroy()
-                del(self.v[k])
-                self.r[k] = create_reset_widget(f, self.hc.so_dict[k],
+                if k in self.v:
+                    del(self.v[k])
+                # Commafy any dollar value or km value.
+                value = self.hc.so_dict[k]
+                if value.isdigit() and 'Year' not in k:
+                    value = commafy(value)
+                if 'dtext' in d:
+                    use_value = d['dtext']
+                else:
+                    use_value = d['label']
+                tstr = ("%s: %s" % (use_value, value)).replace(' (any)', '')
+                self.r[k] = create_reset_widget(f, tstr,
                         eval('self.reset_'+k))
                 self.r[k].grid(row=0, column=0, sticky='nsew')
         elif d['drawn_state'] == 'specific':
@@ -427,6 +438,18 @@ class refine(Frame):
 
     def reset_Model(self):
         self.search_modified('Reset', 'Model')
+
+    def reset_MinPrice(self):
+        self.search_modified('Reset', 'MinPrice')
+
+    def reset_MaxPrice(self):
+        self.search_modified('Reset', 'MaxPrice')
+
+    def reset_MinOdometer(self):
+        self.search_modified('Reset', 'MinOdometer')
+
+    def reset_MaxOdometer(self):
+        self.search_modified('Reset', 'MaxOdometer')
 
     def reset_BodyStyle(self):
         self.search_modified('Reset', 'BodyStyle')
@@ -496,7 +519,7 @@ class refine(Frame):
         max_cols = max(map(lambda k: max(self.row_dict[k]), self.row_dict)) + 1
         for k in SEARCH_MAP:
             d = SEARCH_MAP[k]
-            self.sf_dict[k] = Frame(self.search_frame)
+            self.sf_dict[k] = Frame(self.search_frame, height=100)
             # If this row has one column only, make it span all columns.
             cspan = 1
             if len(self.row_dict[d['row']]) == 1:
@@ -534,7 +557,11 @@ class refine(Frame):
         kw = dict()
         # Did they type a new value in an Entry box?
         if isinstance(args[0], Event):
-            pass
+            # When an Entry box is modified, figure out which one it is. It
+            # appears to be safe to compare widget memory location addresses.
+            ewidget = args[0].widget
+            k = filter(lambda k: self.w[k] == ewidget, self.w)[0]
+            kw[k] = ewidget.get()
         elif isinstance(args[0], str):
             if args[0] == 'Reset':
                 kw[args[1]] = None
@@ -588,6 +615,5 @@ ref.grid(row=1, column=0, sticky='new')
 lo = location(root, hc, ref)
 lo.grid(row=0, column=0, sticky=(N, W))
 
-root.columnconfigure(0, {'weight': 1})
-root.columnconfigure(1, {'weight': 3})
-root.rowconfigure(0, {'weight': 1})
+root.columnconfigure(1, {'weight': 1})
+root.rowconfigure(1, {'weight': 1})

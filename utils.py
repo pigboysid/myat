@@ -2,6 +2,24 @@ import pickle, re
 from collections import defaultdict
 from math import *
 
+def commafy(v):
+    "Given numeric v, add comma separators to it and return a string."
+    a = str(v)
+    # If it appears to be exponential notation, return it as is.
+    if 'e' in a:
+        return a
+    # If there's a decimal place in the number, add it back afterward.
+    asp = a.split('.')
+    frac = '.' + asp[1] if len(asp) > 1 else ''
+    mant = asp[0]
+    # If the number has 4 digits, then add one comma.  If it has 7 digits, add
+    # two commas. And so on.
+    nlen = len(re.search('\d+', mant).group(0))
+    for i1 in range(1, (nlen - 1) // 3 + 1):
+        sp = -4 * i1 + 1
+        mant = mant[:sp] + ',' + mant[sp:]
+    return mant + frac
+
 class utils(object):
     """
     Utilities for manipulating the results of a search.
@@ -47,21 +65,7 @@ class utils(object):
 
     def commafy(self, v):
         "Given numeric v, add comma separators to it and return a string."
-        a = str(v)
-        # If it appears to be exponential notation, return it as is.
-        if 'e' in a:
-            return a
-        # If there's a decimal place in the number, add it back afterward.
-        asp = a.split('.')
-        frac = '.' + asp[1] if len(asp) > 1 else ''
-        mant = asp[0]
-        # If the number has 4 digits, then add one comma.  If it has 7 digits,
-        # add two commas. And so on.
-        nlen = len(re.search('\d+', mant).group(0))
-        for i1 in range(1, (nlen - 1) // 3 + 1):
-            sp = -4 * i1 + 1
-            mant = mant[:sp] + ',' + mant[sp:]
-        return mant + frac
+        return commafy(v)
 
     def axis(self, v1, v2, ntick=4):
         "Given values v1 & v2, find best axis min, max, spacing values."

@@ -161,7 +161,7 @@ class parse_at(object):
                         wheredist = 0
                         wherestr = ' '.join(dstr)
                     else:
-                        wheredist = int(dstr[1])
+                        wheredist = int(re.sub(r'[^0-9.]', '', dstr[1]))
                         wherestr = "%s%s" % (dstr[1], dstr[2])
             # Try to remove duplicates from the priority listings: do it by
             # removing the parameters to the URL (i.e., everything after the
