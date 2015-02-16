@@ -55,6 +55,7 @@ class at_graph(Frame):
         # Filter the description strings: lower and whiten any non-matching
         # data point.
         self.filter = ''
+        self.re = list()
         self.replot()
 
     def replot(self, zlfrac=None):
@@ -177,8 +178,11 @@ class at_graph(Frame):
 
     def car_points(self, draw=True):
         "Plot the cars themselves."
-        color_order = ['#98df8a', '#dbdb8d', '#aec7e8', '#c9acd4', '#f7b6d2',
-            '#ffbb80', '#dc9b8d', '#e9ab17', '#dddddd']
+        # 199 215 151 151 199 224 230 162 157 250 224 167 178 165 192 249 200 216 204 204 204 191 173 158
+        color_order = ['#c7d797', '#97c7e0', '#e6a29d', '#fae0a7', '#b2a5c0',
+            '#f9c8d8', '#bfad9e', '#cccccc']
+        #color_order = ['#98df8a', '#dbdb8d', '#aec7e8', '#c9acd4', '#f7b6d2',
+        #    '#ffbb80', '#dc9b8d', '#e9ab17', '#dddddd']
         # Those colors above aren't saturated enough. Saturate them more.
         color_order = map(lambda x: resaturate(x, -80), color_order)
         # Change color depending on year.

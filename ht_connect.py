@@ -42,7 +42,7 @@ JS_REFINE = """{"searchOption": {
 
 class ht_connect(object):
 
-    host = 'wwwb.autotrader.ca'
+    host = 'www.autotrader.ca'
     # Route to pass some characters, like "Waterl", to have it return location
     # suggestions (like "Waterloo, ON" and "Waterloo, QC").
     suggest_route = '/SuggestionService.asmx/GetLocationSuggestions'
@@ -62,21 +62,28 @@ class ht_connect(object):
             '59_MVT': 'Beta',
             'uag': uag,
         }
-        # Dictionary for HTTP headers.
-        self.hdict = dict()
-        self.hc = httplib.HTTPConnection(self.host)
-        # Set initial cookies.
-        self._basic_headers()
-        self._cookie_headers()
-        # Upon construction, get main page, which will return a bunch of
-        # Set-Cookie: headers which we should parse, and honor.
-        self.hc.request('GET', '/', '', self.hdict)
-        r = self.hc.getresponse()
-        if r.status != 200:
-            raise Exception('Connection to server returned %s error',
-                r.status)
+        while True:
+            # Dictionary for HTTP headers.
+            self.hdict = dict()
+            self.hc = httplib.HTTPConnection(self.host, 80)
+            # Set initial cookies.
+            self._basic_headers()
+            self._cookie_headers()
+            # Upon construction, get main page, which will return a bunch of
+            # Set-Cookie: headers which we should parse, and honor.
+            self.hc.request('GET', '/', '', self.hdict)
+            self.r = self.hc.getresponse()
+            if self.r.status == 302:
+                self.host = dict(self.r.getheaders()).get('location')
+            else:
+                break
+        if self.r.status != 200:
+            print dir(self.r)
+            print '\n'.join(map(str, self.r.getheaders()))
+            raise Exception('Connection to server returned %s error' %
+                self.r.status)
         # Have to parse the response, or else can't issue another request.
-        self._parse_response(r)
+        self._parse_response(self.r)
         # Start the search with no options set.
         self.initialize_search()
 
@@ -218,6 +225,7 @@ class ht_connect(object):
     def get_vehicles(self):
         rpage = '/cars/volkswagen/on/waterloo/?prx=100&prv=Ontario&loc=waterloo%2c+on&sts=New-Used&hprc=True&wcp=True'
         rpage = self.js_response['d']['ResultPageUrl'] + '&rcp=500&srt=4'
+        rpage = rpage.replace(' ', '%20')
         print rpage
         for key in ['X-NewRelic-ID', 'X-Requested-With', 'Content-Type',
             'Content-Length']:
