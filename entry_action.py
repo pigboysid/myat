@@ -3,62 +3,62 @@
 
 from Tkinter import *
 
-def entry_key_press(event):
-    "Process the event from a key press in an Entry widget."
-    e = event.widget
-    s = e.get()
-    if s == get_empty_text(e):
-        e.delete(0, len(s))
-        e.configure({'fg': 'black'})
+class at_entry(Frame):
 
-def entry_key_release(event):
-    "Process the event from a key release in an Entry widget."
-    e = event.widget
-    s = e.get()
-    if s == '':
-        set_empty_text(e)
+    def __init__(self, parent, empty_text):
+        Frame.__init__(self, parent)
+        self.parent = parent
+        self.w = Entry(self.parent, width=16)
+        self.empty_text = empty_text
+        self.set_empty_text()
+        self.w.bind('<KeyPress>', self.entry_key_press)
+        self.w.bind('<KeyRelease>', self.entry_key_release)
+        self.w.bind('<ButtonRelease>', self.entry_button)
+        self.w.bind('<FocusIn>', self.entry_focus_in)
+        self.w.bind('<FocusOut>', self.entry_focus_out)
 
-def entry_button(event):
-    "Process the event from a button press in an Entry widget."
-    e = event.widget
-    s = e.get()
-    if s == get_empty_text(e):
-        e.icursor(0)
+    def entry_key_press(self, event):
+        "Process the event from a key press in an Entry widget."
+        e = event.widget
+        s = e.get()
+        if s == self.empty_text:
+            self.w.delete(0, len(s))
+            self.w.configure({'fg': 'black'})
 
-def entry_focus_in(event):
-    "Process the event from an Entry widget getting focus."
-    e = event.widget
-    s = e.get()
-    if s == get_empty_text(e):
-        e.icursor(0)
-        e.select_clear()
+    def entry_key_release(self, event):
+        "Process the event from a key release in an Entry widget."
+        s = self.w.get()
+        if s == '':
+            self.set_empty_text()
 
-def entry_focus_out(event):
-    "Process the event from an Entry widget losing focus."
-    e = event.widget
-    s = e.get()
-    if s == '':
-        set_empty_text(e)
+    def entry_button(self, event):
+        "Process the event from a button press in an Entry widget."
+        s = self.w.get()
+        if s == self.empty_text:
+            self.w.icursor(0)
 
-def get_empty_text(e):
-    if e == en[0]:
-        return 'Min. Price'
-    return 'Max. Price'
+    def entry_focus_in(self, event):
+        "Process the event from an Entry widget getting focus."
+        s = self.w.get()
+        if s == self.empty_text:
+            self.w.icursor(0)
+            self.w.select_clear()
 
-def set_empty_text(e):
-    e.insert(0, get_empty_text(e))
-    e.configure({'fg': 'grey'})
-    e.icursor(0)
+    def entry_focus_out(self, event):
+        "Process the event from an Entry widget losing focus."
+        s = self.w.get()
+        if s == '':
+            self.set_empty_text()
+
+    def set_empty_text(self):
+        self.w.insert(0, self.empty_text)
+        self.w.configure({'fg': 'grey'})
+        self.w.icursor(0)
 
 root = Tk()
 
 en = ['', '']
-for i in range(2):
-    en[i] = Entry(root, width=16)
-    set_empty_text(en[i])
-    en[i].bind('<KeyPress>', entry_key_press)
-    en[i].bind('<KeyRelease>', entry_key_release)
-    en[i].bind('<ButtonRelease>', entry_button)
-    en[i].bind('<FocusIn>', entry_focus_in)
-    en[i].bind('<FocusOut>', entry_focus_out)
-    en[i].pack()
+en[0] = at_entry(root, 'Min. Price')
+en[0].w.pack()
+en[1] = at_entry(root, 'Max. Price')
+en[1].w.pack()

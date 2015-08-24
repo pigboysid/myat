@@ -617,3 +617,5 @@ lo.grid(row=0, column=0, sticky=(N, W))
 
 root.columnconfigure(1, {'weight': 1})
 root.rowconfigure(1, {'weight': 1})
+
+root.mainloop()

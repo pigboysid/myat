@@ -11,11 +11,16 @@
 from Tkinter import *
 from Tkinter import _setit
 
+ipath = 'cancel.gif'
+ISIZE = 30
+button_kw = {'width': 16, 'height': 16, 'borderwidth': 0}
+
 class ui(Frame):
 
     def __init__(self, parent):
         Frame.__init__(self, parent)
         self.parent = parent
+        self.image = PhotoImage(file=ipath)
         # For frames that enclose UI elements.
         self.f = dict()
         # For selection widgets inside frames.
@@ -47,12 +52,14 @@ class ui(Frame):
         self.w[k] = OptionMenu(f, self.v[k], self.v[k].get())
         self.e[k] = Entry(f, disabledforeground='blue',
             disabledbackground='#cdcdff')
-        self.r[k] = Button(f, text='Clear', command=eval('self.clear_%s' % k))
+        #self.r[k] = Button(f, text='Clear', command=eval('self.clear_%s' % k))
+        self.r[k] = Button(f, image=self.image, bg='white',
+            command=eval('self.clear_%s' % k), **button_kw)
         self.r[k].grid(row=0, column=1)
         self.set_option_choices(k)
         f.grid(row=row, column=0, columnspan=2, sticky='ew')
         f.columnconfigure(0, weight=1, minsize=270)
-        f.columnconfigure(1, minsize=70)
+        f.columnconfigure(1, minsize=ISIZE)
         f.rowconfigure(0, minsize=35)
 
     def add_narrow_option_menu(self, k, row, column, label=''):
@@ -68,14 +75,16 @@ class ui(Frame):
         self.w[k] = OptionMenu(f, self.v[k], self.v[k].get())
         self.e[k] = Entry(f, disabledforeground='blue',
             disabledbackground='#cdcdff', width=8)
-        self.r[k] = Button(f, text='Clear', command=eval('self.clear_%s' % k))
+        #self.r[k] = Button(f, text='Clear', command=eval('self.clear_%s' % k))
+        self.r[k] = Button(f, image=self.image,
+            command=eval('self.clear_%s' % k), **button_kw)
         self.r[k].grid(row=0, column=1+option_column)
         self.set_option_choices(k, column=option_column)
         f.grid(row=row, column=column, sticky='ew')
         if label:
             f.columnconfigure(0, minsize=50)
         f.columnconfigure(option_column, weight=1, minsize=120)
-        f.columnconfigure(1+option_column, minsize=70)
+        f.columnconfigure(1+option_column, minsize=ISIZE)
         f.rowconfigure(0, minsize=35)
 
     def add_entry_box(self, k, row, column, label=''):
@@ -86,12 +95,14 @@ class ui(Frame):
         self.w[k] = Entry(f, width=16)
         self.e[k] = Entry(f, disabledforeground='blue',
             disabledbackground='#cdcdff', width=16)
-        self.r[k] = Button(f, text='Clear', command=eval('self.clear_%s' % k))
+        #self.r[k] = Button(f, text='Clear', command=eval('self.clear_%s' % k))
+        self.r[k] = Button(f, image=self.image,
+            command=eval('self.clear_%s' % k), **button_kw)
         self.r[k].grid(row=0, column=2)
         self.set_blank_entry(k)
         f.grid(row=row, column=column, sticky='ew')
         f.columnconfigure(0, minsize=50)
-        f.columnconfigure(2, minsize=70)
+        f.columnconfigure(2, minsize=ISIZE)
         f.rowconfigure(0, minsize=35)
     
     def add_wide_entry_box(self, k, row, label=''):
@@ -103,12 +114,14 @@ class ui(Frame):
         self.w[k] = Entry(f, width=8)
         self.e[k] = Entry(f, disabledforeground='blue',
             disabledbackground='#cdcdff', width=8)
-        self.r[k] = Button(f, text='Clear', command=eval('self.clear_%s' % k))
+        #self.r[k] = Button(f, text='Clear', command=eval('self.clear_%s' % k))
+        self.r[k] = Button(f, image=self.image,
+            command=eval('self.clear_%s' % k), **button_kw)
         self.r[k].grid(row=1, column=1)
         self.set_blank_wide_entry(k)
         f.grid(row=row, column=0, columnspan=2, sticky='ew')
         f.columnconfigure(0, weight=1, minsize=270)
-        f.columnconfigure(1, minsize=70)
+        f.columnconfigure(1, minsize=ISIZE)
         f.rowconfigure(0, minsize=10)
         f.rowconfigure(1, minsize=35)
 
@@ -202,7 +215,7 @@ class ui(Frame):
         self.e[k].grid(row=1, column=0, sticky='ew')
 
     def search_modified(self, *args):
-        # The modified OptionMenu is in args[0], but we've appended a nunber to
+        # The modified OptionMenu is in args[0], but we've appended a number to
         # it. Get the key of the modified OptionMenu.
         cvar = args[0]
         print "-- In search_modified", args

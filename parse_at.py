@@ -92,7 +92,7 @@ class parse_at(object):
         fh = open(html_file, 'rb')
         content = fh.read()
         fh.close()
-        bs = BeautifulSoup(content)
+        bs = BeautifulSoup(content, 'lxml')
         nc = 0
         self.all_descr = []
         self.all_alink = []
