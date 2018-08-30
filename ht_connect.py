@@ -1,4 +1,4 @@
-import httplib, json, gzip, random, tempfile, os
+import httplib, json, gzip, random, tempfile, os, re
 
 # This appears to be the JSON sent for a refinement with no other info present.
 JS_REFINE = """{"searchOption": {
@@ -73,8 +73,10 @@ class ht_connect(object):
             # Set-Cookie: headers which we should parse, and honor.
             self.hc.request('GET', '/', '', self.hdict)
             self.r = self.hc.getresponse()
-            if self.r.status == 302:
+            if self.r.status == 302 or self.r.status == 301:
                 self.host = dict(self.r.getheaders()).get('location')
+                self.host = re.sub(r'http://', '', self.host)
+                self.host = re.sub(r'/', '', self.host)
             else:
                 break
         if self.r.status != 200:

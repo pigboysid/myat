@@ -105,64 +105,34 @@ class parse_at(object):
         # Count vehicle links, plus vehicles with no price, and no km, and
         # which are duplicates.
         self.vlinks = self.vnoprice = self.vnokm = self.vduplicate = 0
-        # Seems like the div with class="at_infoArea" has the string
-        # description, plus the link to the actual vehicle page.
-        for tag in bs('div', 'at_infoArea'):
-            descr = alink = price = km = None
+        _has_class = lambda child, cname: child.get('class') and cname in child.get('class')
+        for tag in bs('div', 'base-listing-v2'):
+            # It can happen that there are "similar vehicles" and "41 deals
+            # on..." listings. Skip them.
+            if 'text-right' in tag.get('class') or 'col-xs-12' in tag.get('class'):
+                continue
+            descr = alink = price = km = wheredist = wherestr = None
             for child in tag.descendants:
-                if isinstance(child, nstr):
-                    ch = child.strip()
-                    if ch:
-                        descr = ch
-                        # Gross. Sometimes, <a> link is third parent, not
-                        # second.
-                        if child.parent.parent.a is not None:
-                            alink = child.parent.parent.a['href']
-                        else:
-                            alink = child.parent.parent.parent.a['href']
+                if child.name == 'span':
+                    if child.get('itemprop') == 'itemOffered':
+                        descr = child.string.strip()
+                    elif _has_class(child, 'price-amount'):
+                        price = int(re.sub(r'[^0-9.]', '', child.string.strip()))
+                    elif _has_class(child, 'proximity-text'):
+                        loc_str = child.string.strip()
+                        mg = re.search(r'In ([^,]+)', loc_str)
+                        if mg:
+                            wherestr = 'In {}'.format(mg.group(1))
+                        mg = re.search(r'(\d+) km', loc_str)
+                        if mg:
+                            wheredist = int(re.sub(r'[^0-9.]', '', mg.group(1)))
+                elif child.name == 'a':
+                    if _has_class(child, 'result-title'):
+                        alink = child.get('href')
                         self.vlinks += 1
-                        break
-            if descr is None:
-                raise ValueError("Couldn't find description string")
-            if alink is None:
-                raise ValueError("Couldn't find link to vehicle")
-            # OK, now look for the div's with class="at_price" and "at_km",
-            # inside the parent of the parent.
-            price = km = wheredist = wherestr = None
-            for child in tag.parent.parent.descendants:
-                if isinstance(child, nstr) or child.name != 'div':
-                    continue
-                chcl = child.get('class')
-                if chcl is None:
-                    continue
-                if chcl[0] == u'at_price':
-                    # Don't forget to keep decimal places (people do charge
-                    # fractional dollars sometimes).
-                    #
-                    # Also, sometimes people show multiple prices, with one of
-                    # them in strikethrough, to show that the price has been
-                    # lowered. Seems to be that the new price is the _last_ of
-                    # the prices (e.g., if it's been lowered from $28,900 to
-                    # $26,900, then the stripped strings are "$28,900" followed
-                    # by a bunch of whitespace, followed by "$26,900". So, take
-                    # the last of the prices (the split()[-1] does this).
-                    price = int(re.sub(r'[^0-9.]', '',
-                        ''.join(child.strings).strip().split()[-1]))
-                if chcl[0] == u'at_km':
-                    km = int(re.sub(r'[^0-9]', '', child.string.strip()))
-                # There are two ResultDistance classes: one just has the city
-                # and province, second has the distance as well.  Use the
-                # second one.
-                if chcl[0] == u'ResultDistance':
-                    dstr = ''.join(child.strings).strip().split()
-                    # Sometimes, distance string is "In Toronto", others it's
-                    # "Within 87 km". Handle both cases.
-                    if dstr[0] == 'In':
-                        wheredist = 0
-                        wherestr = ' '.join(dstr)
-                    else:
-                        wheredist = int(re.sub(r'[^0-9.]', '', dstr[1]))
-                        wherestr = "%s%s" % (dstr[1], dstr[2])
+                elif child.name == 'div':
+                    if _has_class(child, 'kms'):
+                        km = int(re.sub(r'[^0-9.]', '', ' '.join(list(child.stripped_strings))))
             # Try to remove duplicates from the priority listings: do it by
             # removing the parameters to the URL (i.e., everything after the
             # "?").  The priority listings have one extra parameter.  Also,
@@ -426,9 +396,9 @@ class parse_at(object):
 ###############################################################################
 
 if False:
-    qstr1 = 'http://www.autotrader.ca/a/pv/Used/Volkswagen/Passat/all/?prx=100&cty=Waterloo&prv=Ontario&r=40&loc=Waterloo%2c+ON&cat1=2&cat2=7%2c11%2c10%2c9&yRng=2012%2c&st=1'
+    qstr1 = 'http://www.autotrader.ca/a/pv/Used/Volkswagen/Passat/all/?prx=100&cty=Waterloo&prv=Ontario&r=40&loc=Waterloo%2c+ON&cat1=2&cat2=7%2c11%2c10%2c9&yRng=2015%2c&st=1'
     pat = parse_at(
-        title='2012-2015 VW Passat within 100km of Waterloo',
+        title='2015-2018 VW Passat within 100km of Waterloo',
         out_html='passat.html',
     )
     pat.execute(qstr1)
