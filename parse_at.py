@@ -148,7 +148,7 @@ class parse_at(object):
                 self.alink_d[s_alink] = 1
                 _uc = lambda st: unicode(st).encode('utf-8')
                 self.all_descr.append(_uc(descr))
-                self.all_alink.append(alink)
+                self.all_alink.append('http://www.autotrader.ca{}'.format(alink))
                 self.all_price.append(price)
                 self.all_km.append(km)
                 self.all_wheredist.append(wheredist)
